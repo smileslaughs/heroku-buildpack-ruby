@@ -122,7 +122,7 @@ WARNING
     
       late_slug_ignore_file = File.new(".lateslugignore", "r")
       late_slug_ignore_file.each do |line|
-        unless line.chomp!.empty?
+        unless "#{line.chomp!}".empty?
           ignored_extensions.push line
         end
       end
