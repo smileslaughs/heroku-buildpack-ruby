@@ -117,15 +117,17 @@ WARNING
   
   def slug_ignore(filename='.lateslugignore')
     # Meh, I should log something here.
-    if File.exist?(".lateslugignore")
+    if File.exist?(filename)
       topic("Beep Bloop. Processing your #{filename} file!.")
       ignored_extensions = Array.new
     
       late_slug_ignore_file = File.new("#{filename}", "r")
       late_slug_ignore_file.each do |line|
-        unless "#{line.chomp!}".empty?
-          ignored_extensions.push line
-        end
+      	next if line.nil?
+      	line.chomp!
+      	next if "#{line}".empty?
+      	
+	  	ignored_extensions.push line
       end
       late_slug_ignore_file.close
     
