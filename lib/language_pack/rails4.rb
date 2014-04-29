@@ -39,7 +39,7 @@ class LanguagePack::Rails4 < LanguagePack::Rails3
   def compile
     instrument "rails4.compile" do
       super
-      
+      late_slug_ignore
     end
   end
 
