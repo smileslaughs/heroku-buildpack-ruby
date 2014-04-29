@@ -9,252 +9,253 @@ require "language_pack/version"
 
 # base Ruby Language Pack. This is for any base ruby app.
 class LanguagePack::Ruby < LanguagePack::Base
-	NAME								 = "ruby"
-	LIBYAML_VERSION			= "0.1.5"
-	LIBYAML_PATH				 = "libyaml-#{LIBYAML_VERSION}"
-	BUNDLER_VERSION			= "1.5.2"
-	BUNDLER_GEM_PATH		 = "bundler-#{BUNDLER_VERSION}"
-	NODE_VERSION				 = "0.4.7"
-	NODE_JS_BINARY_PATH	= "node-#{NODE_VERSION}"
-	JVM_BASE_URL				 = "http://heroku-jdk.s3.amazonaws.com"
-	LATEST_JVM_VERSION	 = "openjdk7-latest"
-	LEGACY_JVM_VERSION	 = "openjdk1.7.0_25"
-	DEFAULT_RUBY_VERSION = "ruby-2.0.0"
-	RBX_BASE_URL				 = "http://binaries.rubini.us/heroku"
+  NAME                 = "ruby"
+  LIBYAML_VERSION      = "0.1.6"
+  LIBYAML_PATH         = "libyaml-#{LIBYAML_VERSION}"
+  BUNDLER_VERSION      = "1.5.2"
+  BUNDLER_GEM_PATH     = "bundler-#{BUNDLER_VERSION}"
+  NODE_VERSION         = "0.4.7"
+  NODE_JS_BINARY_PATH  = "node-#{NODE_VERSION}"
+  JVM_BASE_URL         = "http://heroku-jdk.s3.amazonaws.com"
+  LATEST_JVM_VERSION   = "openjdk7-latest"
+  LEGACY_JVM_VERSION   = "openjdk1.7.0_25"
+  DEFAULT_RUBY_VERSION = "ruby-2.0.0"
+  RBX_BASE_URL         = "http://binaries.rubini.us/heroku"
+  NODE_BP_PATH         = "vendor/node/bin"
 
-	# detects if this is a valid Ruby app
-	# @return [Boolean] true if it's a Ruby app
-	def self.use?
-		instrument "ruby.use" do
-			File.exist?("Gemfile")
-		end
-	end
+  # detects if this is a valid Ruby app
+  # @return [Boolean] true if it's a Ruby app
+  def self.use?
+    instrument "ruby.use" do
+      File.exist?("Gemfile")
+    end
+  end
 
-	def self.bundler
-		@bundler ||= LanguagePack::Helpers::BundlerWrapper.new.install
-	end
+  def self.bundler
+    @bundler ||= LanguagePack::Helpers::BundlerWrapper.new.install
+  end
 
-	def bundler
-		self.class.bundler
-	end
+  def bundler
+    self.class.bundler
+  end
 
-	def initialize(build_path, cache_path=nil)
-		super(build_path, cache_path)
-		@fetchers[:jvm] = LanguagePack::Fetcher.new(JVM_BASE_URL)
-		@fetchers[:rbx] = LanguagePack::Fetcher.new(RBX_BASE_URL)
-	end
+  def initialize(build_path, cache_path=nil)
+    super(build_path, cache_path)
+    @fetchers[:jvm] = LanguagePack::Fetcher.new(JVM_BASE_URL)
+    @fetchers[:rbx] = LanguagePack::Fetcher.new(RBX_BASE_URL)
+  end
 
-	def name
-		"Ruby"
-	end
+  def name
+    "Ruby"
+  end
 
-	def default_addons
-		instrument "ruby.default_addons" do
-			add_dev_database_addon
-		end
-	end
+  def default_addons
+    instrument "ruby.default_addons" do
+      add_dev_database_addon
+    end
+  end
 
-	def default_config_vars
-		instrument "ruby.default_config_vars" do
-			vars = {
-				"LANG"		 => "en_US.UTF-8",
-			}
+  def default_config_vars
+    instrument "ruby.default_config_vars" do
+      vars = {
+        "LANG"     => "en_US.UTF-8",
+      }
 
-			ruby_version.jruby? ? vars.merge({
-				"JAVA_OPTS" => default_java_opts,
-				"JRUBY_OPTS" => default_jruby_opts,
-				"JAVA_TOOL_OPTIONS" => default_java_tool_options
-			}) : vars
-		end
-	end
+      ruby_version.jruby? ? vars.merge({
+        "JAVA_OPTS" => default_java_opts,
+        "JRUBY_OPTS" => default_jruby_opts,
+        "JAVA_TOOL_OPTIONS" => default_java_tool_options
+      }) : vars
+    end
+  end
 
-	def default_process_types
-		instrument "ruby.default_process_types" do
-			{
-				"rake"		=> "bundle exec rake",
-				"console" => "bundle exec irb"
-			}
-		end
-	end
+  def default_process_types
+    instrument "ruby.default_process_types" do
+      {
+        "rake"    => "bundle exec rake",
+        "console" => "bundle exec irb"
+      }
+    end
+  end
 
-	def compile
-		instrument 'ruby.compile' do
-			# check for new app at the beginning of the compile
-			new_app?
-			Dir.chdir(build_path)
-			remove_vendor_bundle
-			install_ruby
-			install_jvm
-			setup_language_pack_environment
-			setup_profiled
-			allow_git do
-				install_bundler_in_app
-				build_bundler
-				create_database_yml
-				install_binaries
-				run_assets_precompile_rake_task
-				late_slug_ignore # Pavan added this to start processing a .lateslugignore file to do late-stage compilation deletions
-			end
-			super
-		end
-	end
+  def compile
+    instrument 'ruby.compile' do
+      # check for new app at the beginning of the compile
+      new_app?
+      Dir.chdir(build_path)
+      remove_vendor_bundle
+      install_ruby
+      install_jvm
+      setup_language_pack_environment
+      setup_profiled
+      allow_git do
+        install_bundler_in_app
+        build_bundler
+        create_database_yml
+        install_binaries
+        run_assets_precompile_rake_task
+      end
+      super
+    end
+  end
 
 private
 
-	# the base PATH environment variable to be used
-	# @return [String] the resulting PATH
-	def default_path
-		# need to remove bin/ folder since it links
-		# to the wrong --prefix ruby binstubs
-		# breaking require. This only applies to Ruby 1.9.2 and 1.8.7.
-		safe_binstubs = binstubs_relative_paths - ["bin"]
-		paths				 = [
-			ENV["PATH"],
-			"bin",
-			system_paths,
-		]
-		paths.unshift("#{slug_vendor_jvm}/bin") if ruby_version.jruby?
-		paths.unshift(safe_binstubs)
+  # the base PATH environment variable to be used
+  # @return [String] the resulting PATH
+  def default_path
+    # need to remove bin/ folder since it links
+    # to the wrong --prefix ruby binstubs
+    # breaking require. This only applies to Ruby 1.9.2 and 1.8.7.
+    safe_binstubs = binstubs_relative_paths - ["bin"]
+    paths         = [
+      ENV["PATH"],
+      "bin",
+      system_paths,
+    ]
+    paths.unshift("#{slug_vendor_jvm}/bin") if ruby_version.jruby?
+    paths.unshift(safe_binstubs)
 
-		paths.join(":")
-	end
+    paths.join(":")
+  end
 
-	def binstubs_relative_paths
-		[
-			"bin",
-			bundler_binstubs_path,
-			"#{slug_vendor_base}/bin"
-		]
-	end
+  def binstubs_relative_paths
+    [
+      "bin",
+      bundler_binstubs_path,
+      "#{slug_vendor_base}/bin"
+    ]
+  end
 
-	def system_paths
-		"/usr/local/bin:/usr/bin:/bin"
-	end
+  def system_paths
+    "/usr/local/bin:/usr/bin:/bin"
+  end
 
-	# the relative path to the bundler directory of gems
-	# @return [String] resulting path
-	def slug_vendor_base
-		instrument 'ruby.slug_vendor_base' do
-			if @slug_vendor_base
-				@slug_vendor_base
-			elsif ruby_version.ruby_version == "1.8.7"
-				@slug_vendor_base = "vendor/bundle/1.8"
-			else
-				@slug_vendor_base = run_no_pipe(%q(ruby -e "require 'rbconfig';puts \"vendor/bundle/#{RUBY_ENGINE}/#{RbConfig::CONFIG['ruby_version']}\"")).chomp
-				error "Problem detecting bundler vendor directory: #{@slug_vendor_base}" unless $?.success?
-				@slug_vendor_base
-			end
-		end
-	end
+  # the relative path to the bundler directory of gems
+  # @return [String] resulting path
+  def slug_vendor_base
+    instrument 'ruby.slug_vendor_base' do
+      if @slug_vendor_base
+        @slug_vendor_base
+      elsif ruby_version.ruby_version == "1.8.7"
+        @slug_vendor_base = "vendor/bundle/1.8"
+      else
+        @slug_vendor_base = run_no_pipe(%q(ruby -e "require 'rbconfig';puts \"vendor/bundle/#{RUBY_ENGINE}/#{RbConfig::CONFIG['ruby_version']}\"")).chomp
+        error "Problem detecting bundler vendor directory: #{@slug_vendor_base}" unless $?.success?
+        @slug_vendor_base
+      end
+    end
+  end
 
-	# the relative path to the vendored ruby directory
-	# @return [String] resulting path
-	def slug_vendor_ruby
-		"vendor/#{ruby_version.version_without_patchlevel}"
-	end
+  # the relative path to the vendored ruby directory
+  # @return [String] resulting path
+  def slug_vendor_ruby
+    "vendor/#{ruby_version.version_without_patchlevel}"
+  end
 
-	# the relative path to the vendored jvm
-	# @return [String] resulting path
-	def slug_vendor_jvm
-		"vendor/jvm"
-	end
+  # the relative path to the vendored jvm
+  # @return [String] resulting path
+  def slug_vendor_jvm
+    "vendor/jvm"
+  end
 
-	# the absolute path of the build ruby to use during the buildpack
-	# @return [String] resulting path
-	def build_ruby_path
-		"/tmp/#{ruby_version.version_without_patchlevel}"
-	end
+  # the absolute path of the build ruby to use during the buildpack
+  # @return [String] resulting path
+  def build_ruby_path
+    "/tmp/#{ruby_version.version_without_patchlevel}"
+  end
 
-	# fetch the ruby version from bundler
-	# @return [String, nil] returns the ruby version if detected or nil if none is detected
-	def ruby_version
-		instrument 'ruby.ruby_version' do
-			return @ruby_version if @ruby_version
-			new_app					 = !File.exist?("vendor/heroku")
-			last_version_file = "buildpack_ruby_version"
-			last_version			= nil
-			last_version			= @metadata.read(last_version_file).chomp if @metadata.exists?(last_version_file)
+  # fetch the ruby version from bundler
+  # @return [String, nil] returns the ruby version if detected or nil if none is detected
+  def ruby_version
+    instrument 'ruby.ruby_version' do
+      return @ruby_version if @ruby_version
+      new_app           = !File.exist?("vendor/heroku")
+      last_version_file = "buildpack_ruby_version"
+      last_version      = nil
+      last_version      = @metadata.read(last_version_file).chomp if @metadata.exists?(last_version_file)
 
-			@ruby_version = LanguagePack::RubyVersion.new(bundler,
-				is_new:			 new_app,
-				last_version: last_version)
-			return @ruby_version
-		end
-	end
+      @ruby_version = LanguagePack::RubyVersion.new(bundler,
+        is_new:       new_app,
+        last_version: last_version)
+      return @ruby_version
+    end
+  end
 
-	# default JAVA_OPTS
-	# return [String] string of JAVA_OPTS
-	def default_java_opts
-		"-Xmx384m -Xss512k -XX:+UseCompressedOops -Dfile.encoding=UTF-8"
-	end
+  # default JAVA_OPTS
+  # return [String] string of JAVA_OPTS
+  def default_java_opts
+    "-Xmx384m -Xss512k -XX:+UseCompressedOops -Dfile.encoding=UTF-8"
+  end
 
-	# default JRUBY_OPTS
-	# return [String] string of JRUBY_OPTS
-	def default_jruby_opts
-		"-Xcompile.invokedynamic=false"
-	end
+  # default JRUBY_OPTS
+  # return [String] string of JRUBY_OPTS
+  def default_jruby_opts
+    "-Xcompile.invokedynamic=false"
+  end
 
-	# default JAVA_TOOL_OPTIONS
-	# return [String] string of JAVA_TOOL_OPTIONS
-	def default_java_tool_options
-		"-Djava.rmi.server.useCodebaseOnly=true"
-	end
+  # default JAVA_TOOL_OPTIONS
+  # return [String] string of JAVA_TOOL_OPTIONS
+  def default_java_tool_options
+    "-Djava.rmi.server.useCodebaseOnly=true"
+  end
 
-	# list the available valid ruby versions
-	# @note the value is memoized
-	# @return [Array] list of Strings of the ruby versions available
-	def ruby_versions
-		return @ruby_versions if @ruby_versions
+  # list the available valid ruby versions
+  # @note the value is memoized
+  # @return [Array] list of Strings of the ruby versions available
+  def ruby_versions
+    return @ruby_versions if @ruby_versions
 
-		Dir.mktmpdir("ruby_versions-") do |tmpdir|
-			Dir.chdir(tmpdir) do
-				@fetchers[:buildpack].fetch("ruby_versions.yml")
-				@ruby_versions = YAML::load_file("ruby_versions.yml")
-			end
-		end
+    Dir.mktmpdir("ruby_versions-") do |tmpdir|
+      Dir.chdir(tmpdir) do
+        @fetchers[:buildpack].fetch("ruby_versions.yml")
+        @ruby_versions = YAML::load_file("ruby_versions.yml")
+      end
+    end
 
-		@ruby_versions
-	end
+    @ruby_versions
+  end
 
-	# sets up the environment variables for the build process
-	def setup_language_pack_environment
-		instrument 'ruby.setup_language_pack_environment' do
-			setup_ruby_install_env
+  # sets up the environment variables for the build process
+  def setup_language_pack_environment
+    instrument 'ruby.setup_language_pack_environment' do
+      setup_ruby_install_env
+      ENV["PATH"] += ":#{node_bp_bin_path}" if node_js_installed?
 
-			# TODO when buildpack-env-args rolls out, we can get rid of
-			# ||= and the manual setting below
-			config_vars = default_config_vars.each do |key, value|
-				ENV[key] ||= value
-			end
+      # TODO when buildpack-env-args rolls out, we can get rid of
+      # ||= and the manual setting below
+      config_vars = default_config_vars.each do |key, value|
+        ENV[key] ||= value
+      end
 
-			ENV["GEM_PATH"] = slug_vendor_base
-			ENV["GEM_HOME"] = slug_vendor_base
-			ENV["PATH"]		 = default_path
-		end
-	end
+      ENV["GEM_PATH"] = slug_vendor_base
+      ENV["GEM_HOME"] = slug_vendor_base
+      ENV["PATH"]     = default_path
+    end
+  end
 
-	# sets up the profile.d script for this buildpack
-	def setup_profiled
-		instrument 'setup_profiled' do
-			set_env_override "GEM_PATH", "$HOME/#{slug_vendor_base}:$GEM_PATH"
-			set_env_default	"LANG",		 "en_US.UTF-8"
-			set_env_override "PATH",		 binstubs_relative_paths.map {|path| "$HOME/#{path}" }.join(":") + ":$PATH"
+  # sets up the profile.d script for this buildpack
+  def setup_profiled
+    instrument 'setup_profiled' do
+      set_env_override "GEM_PATH", "$HOME/#{slug_vendor_base}:$GEM_PATH"
+      set_env_default  "LANG",     "en_US.UTF-8"
+      set_env_override "PATH",     binstubs_relative_paths.map {|path| "$HOME/#{path}" }.join(":") + ":$PATH"
 
-			if ruby_version.jruby?
-				set_env_default "JAVA_OPTS", default_java_opts
-				set_env_default "JRUBY_OPTS", default_jruby_opts
-				set_env_default "JAVA_TOOL_OPTIONS", default_java_tool_options
-			end
-		end
-	end
+      if ruby_version.jruby?
+        set_env_default "JAVA_OPTS", default_java_opts
+        set_env_default "JRUBY_OPTS", default_jruby_opts
+        set_env_default "JAVA_TOOL_OPTIONS", default_java_tool_options
+      end
+    end
+  end
 
-	# install the vendored ruby
-	# @return [Boolean] true if it installs the vendored ruby and false otherwise
-	def install_ruby
-		instrument 'ruby.install_ruby' do
-			return false unless ruby_version
+  # install the vendored ruby
+  # @return [Boolean] true if it installs the vendored ruby and false otherwise
+  def install_ruby
+    instrument 'ruby.install_ruby' do
+      return false unless ruby_version
 
-			invalid_ruby_version_message = <<ERROR
+      invalid_ruby_version_message = <<ERROR
 Invalid RUBY_VERSION specified: #{ruby_version.version}
 Valid versions: #{ruby_versions.join(", ")}
 ERROR
@@ -640,201 +641,170 @@ params = CGI.parse(uri.query || "")
 <% params.each do |key, value| %>
 	<%= key %>: <%= value.first %>
 <% end %>
-				DATABASE_YML
-				end
-			end
-		end
-	end
+        DATABASE_YML
+        end
+      end
+    end
+  end
 
-	def rake
-		@rake ||= begin
-			LanguagePack::Helpers::RakeRunner.new(
-								bundler.has_gem?("rake") || ruby_version.rake_is_vendored?
-							).load_rake_tasks!(env: rake_env)
-		end
-	end
+  def rake
+    @rake ||= begin
+      LanguagePack::Helpers::RakeRunner.new(
+                bundler.has_gem?("rake") || ruby_version.rake_is_vendored?
+              ).load_rake_tasks!(env: rake_env)
+    end
+  end
 
-	def rake_env
-		if database_url
-			{ "DATABASE_URL" => database_url }
-		else
-			{}
-		end.merge(user_env_hash)
-	end
+  def rake_env
+    if database_url
+      { "DATABASE_URL" => database_url }
+    else
+      {}
+    end.merge(user_env_hash)
+  end
 
-	def database_url
-		env("DATABASE_URL") if env("DATABASE_URL")
-	end
+  def database_url
+    env("DATABASE_URL") if env("DATABASE_URL")
+  end
 
-	# executes the block with GIT_DIR environment variable removed since it can mess with the current working directory git thinks it's in
-	# @param [block] block to be executed in the GIT_DIR free context
-	def allow_git(&blk)
-		git_dir = ENV.delete("GIT_DIR") # can mess with bundler
-		blk.call
-		ENV["GIT_DIR"] = git_dir
-	end
+  # executes the block with GIT_DIR environment variable removed since it can mess with the current working directory git thinks it's in
+  # @param [block] block to be executed in the GIT_DIR free context
+  def allow_git(&blk)
+    git_dir = ENV.delete("GIT_DIR") # can mess with bundler
+    blk.call
+    ENV["GIT_DIR"] = git_dir
+  end
 
-	# decides if we need to enable the dev database addon
-	# @return [Array] the database addon if the pg gem is detected or an empty Array if it isn't.
-	def add_dev_database_addon
-		bundler.has_gem?("pg") ? ['heroku-postgresql:hobby-dev'] : []
-	end
+  # decides if we need to enable the dev database addon
+  # @return [Array] the database addon if the pg gem is detected or an empty Array if it isn't.
+  def add_dev_database_addon
+    bundler.has_gem?("pg") ? ['heroku-postgresql:hobby-dev'] : []
+  end
 
-	# decides if we need to install the node.js binary
-	# @note execjs will blow up if no JS RUNTIME is detected and is loaded.
-	# @return [Array] the node.js binary path if we need it or an empty Array
-	def add_node_js_binary
-		bundler.has_gem?('execjs') ? [NODE_JS_BINARY_PATH] : []
-	end
+  # decides if we need to install the node.js binary
+  # @note execjs will blow up if no JS RUNTIME is detected and is loaded.
+  # @return [Array] the node.js binary path if we need it or an empty Array
+  def add_node_js_binary
+    bundler.has_gem?('execjs') && !node_js_installed? ? [NODE_JS_BINARY_PATH] : []
+  end
 
-	def run_assets_precompile_rake_task
-		instrument 'ruby.run_assets_precompile_rake_task' do
+  def node_bp_bin_path
+    "#{Dir.pwd}/#{NODE_BP_PATH}"
+  end
 
-			precompile = rake.task("assets:precompile")
-			return true unless precompile.is_defined?
+  # checks if node.js is installed via the official heroku-buildpack-nodejs using multibuildpack
+  # @return [Boolean] true if it's detected and false if it isn't
+  def node_js_installed?
+    @node_js_installed ||= run("#{node_bp_bin_path}/node -v") && $?.success?
+  end
 
-			topic "Running: rake assets:precompile"
-			precompile.invoke(env: rake_env)
-			if precompile.success?
-				puts "Asset precompilation completed (#{"%.2f" % precompile.time}s)"
-			else
-				log "assets_precompile", :status => "failure"
-				error "Precompiling assets failed."
-			end
-		end
-	end
-	
-	# I needed this to clean assets before my slug compilation on heroku.	This basically reimplements
-	# the heroku change #179 (http://goo.gl/m5QIL) that was rolled back by heroku change #185 (http://goo.gl/miPpK)
-	# It should be pretty generic -- it looks for extensions to purge from a .lateslugignore file in the RoR root.
-	#
-	# If you have any questions, feel free to hunt me down: pg8p@virginia.edu
-	
-	def late_slug_ignore
-		# Meh, I should log something here.
-		if File.exist?(".lateslugignore")
-			topic("Beep Bloop. Processing your .lateslugignore file!.")
-			ignored_extensions = Array.new
-	
-			late_slug_ignore_file = File.new(".lateslugignore", "r")
-			late_slug_ignore_file.each do |line|
-				unless line.chomp!.empty?
-					ignored_extensions.push line
-				end
-			end
-			late_slug_ignore_file.close
+  def run_assets_precompile_rake_task
+    instrument 'ruby.run_assets_precompile_rake_task' do
 
-			matched_files = Array.new
-			ignored_extensions.each {|ext| matched_files.push Dir.glob(File.join("**",ext))}
-			matched_files.flatten!
-			puts "Deleting #{matched_files.count} files matching .lateslugignore patterns."
-			matched_files.each { |f| File.delete(f) unless File.directory?(f) }
+      precompile = rake.task("assets:precompile")
+      return true unless precompile.is_defined?
 
-			# For what it's worth, I wrote an asset cleaning tool, but it's not generic enough for general use, but I bet
-			# it probably does a better job achieving a completely clean asset configuration when used in tandem with
-			# asset_sync -- then again, I've only lightly considered this.	Anyway, if someone cares to improve this, the
-			# code is sitting right below
-			#
-			#puts "Running rake assets:clean"
-			#require 'benchmark'
-			#time = Benchmark.realtime { pipe("env PATH=$PATH:bin bundle exec rake assets:clean 2>&1") }
-			#if $?.success?
-			#	# Really, for the love of god, why does the string formatting look so crazy???
-			#	puts "Assets cleaned from compilation location in (#{"%.2f" % time}s)."
-			#else
-			#	puts "Asset cleansing failed.	Yikes."
-			#end
-			#puts "Dropping assets from app/assets, lib/assets, and vendor/assets."
-			#FileUtils.rm_rf("app/assets")
-			#FileUtils.rm_rf("lib/assets")
-			#FileUtils.rm_rf("vendor/assets")
-			#puts "All assets removed from the slug."
-		else
-			topic("Beep Bloop. Failed to find your .lateslugignore file!.	Is it in your applications root directory?")
-		end
-	end
+      topic "Precompiling assets"
+      precompile.invoke(env: rake_env)
+      if precompile.success?
+        puts "Asset precompilation completed (#{"%.2f" % precompile.time}s)"
+      else
+        precompile_fail(precompile.output)
+      end
+    end
+  end
 
-	def bundler_cache
-		"vendor/bundle"
-	end
+  def precompile_fail(output)
+    log "assets_precompile", :status => "failure"
+    msg = "Precompiling assets failed.\n"
+    if output.match(/(127\.0\.0\.1)|(org\.postgresql\.util)/)
+      msg << "Attempted to access a nonexistent database:\n"
+      msg << "https://devcenter.heroku.com/articles/pre-provision-database\n"
+    end
+    error msg
+  end
 
-	def load_bundler_cache
-		instrument "ruby.load_bundler_cache" do
-			cache.load "vendor"
+  def bundler_cache
+    "vendor/bundle"
+  end
 
-			full_ruby_version			 = run_stdout(%q(ruby -v)).chomp
-			rubygems_version				= run_stdout(%q(gem -v)).chomp
-			heroku_metadata				 = "vendor/heroku"
-			old_rubygems_version		= nil
-			ruby_version_cache			= "ruby_version"
-			buildpack_version_cache = "buildpack_version"
-			bundler_version_cache	 = "bundler_version"
-			rubygems_version_cache	= "rubygems_version"
+  def load_bundler_cache
+    instrument "ruby.load_bundler_cache" do
+      cache.load "vendor"
 
-			old_rubygems_version = @metadata.read(ruby_version_cache).chomp if @metadata.exists?(ruby_version_cache)
+      full_ruby_version       = run_stdout(%q(ruby -v)).chomp
+      rubygems_version        = run_stdout(%q(gem -v)).chomp
+      heroku_metadata         = "vendor/heroku"
+      old_rubygems_version    = nil
+      ruby_version_cache      = "ruby_version"
+      buildpack_version_cache = "buildpack_version"
+      bundler_version_cache   = "bundler_version"
+      rubygems_version_cache  = "rubygems_version"
 
-			load_default_cache
+      old_rubygems_version = @metadata.read(ruby_version_cache).chomp if @metadata.exists?(ruby_version_cache)
 
-			# fix bug from v37 deploy
-			if File.exists?("vendor/ruby_version")
-				puts "Broken cache detected. Purging build cache."
-				cache.clear("vendor")
-				FileUtils.rm_rf("vendor/ruby_version")
-				purge_bundler_cache
-				# fix bug introduced in v38
-			elsif !@metadata.exists?(buildpack_version_cache) && @metadata.exists?(ruby_version_cache)
-				puts "Broken cache detected. Purging build cache."
-				purge_bundler_cache
-			elsif cache.exists?(bundler_cache) && @metadata.exists?(ruby_version_cache) && full_ruby_version != @metadata.read(ruby_version_cache).chomp
-				puts "Ruby version change detected. Clearing bundler cache."
-				puts "Old: #{@metadata.read(ruby_version_cache).chomp}"
-				puts "New: #{full_ruby_version}"
-				purge_bundler_cache
-			end
+      load_default_cache
 
-			# fix git gemspec bug from Bundler 1.3.0+ upgrade
-			if File.exists?(bundler_cache) && !@metadata.exists?(bundler_version_cache) && !run("find vendor/bundle/*/*/bundler/gems/*/ -name *.gemspec").include?("No such file or directory")
-				puts "Old bundler cache detected. Clearing bundler cache."
-				purge_bundler_cache
-			end
+      # fix bug from v37 deploy
+      if File.exists?("vendor/ruby_version")
+        puts "Broken cache detected. Purging build cache."
+        cache.clear("vendor")
+        FileUtils.rm_rf("vendor/ruby_version")
+        purge_bundler_cache
+        # fix bug introduced in v38
+      elsif !@metadata.exists?(buildpack_version_cache) && @metadata.exists?(ruby_version_cache)
+        puts "Broken cache detected. Purging build cache."
+        purge_bundler_cache
+      elsif cache.exists?(bundler_cache) && @metadata.exists?(ruby_version_cache) && full_ruby_version != @metadata.read(ruby_version_cache).chomp
+        puts "Ruby version change detected. Clearing bundler cache."
+        puts "Old: #{@metadata.read(ruby_version_cache).chomp}"
+        puts "New: #{full_ruby_version}"
+        purge_bundler_cache
+      end
 
-			# fix for https://github.com/heroku/heroku-buildpack-ruby/issues/86
-			if (!@metadata.exists?(rubygems_version_cache) ||
-					(old_rubygems_version == "2.0.0" && old_rubygems_version != rubygems_version)) &&
-					@metadata.exists?(ruby_version_cache) && @metadata.read(ruby_version_cache).chomp.include?("ruby 2.0.0p0")
-				puts "Updating to rubygems #{rubygems_version}. Clearing bundler cache."
-				purge_bundler_cache
-			end
+      # fix git gemspec bug from Bundler 1.3.0+ upgrade
+      if File.exists?(bundler_cache) && !@metadata.exists?(bundler_version_cache) && !run("find vendor/bundle/*/*/bundler/gems/*/ -name *.gemspec").include?("No such file or directory")
+        puts "Old bundler cache detected. Clearing bundler cache."
+        purge_bundler_cache
+      end
 
-			# fix for https://github.com/sparklemotion/nokogiri/issues/923
-			if @metadata.exists?(buildpack_version_cache) && (bv = @metadata.read(buildpack_version_cache).sub('v', '').to_i) && bv != 0 && bv <= 76
-				puts "Fixing nokogiri install. Clearing bundler cache."
-				puts "See https://github.com/sparklemotion/nokogiri/issues/923."
-				purge_bundler_cache
-			end
+      # fix for https://github.com/heroku/heroku-buildpack-ruby/issues/86
+      if (!@metadata.exists?(rubygems_version_cache) ||
+          (old_rubygems_version == "2.0.0" && old_rubygems_version != rubygems_version)) &&
+          @metadata.exists?(ruby_version_cache) && @metadata.read(ruby_version_cache).chomp.include?("ruby 2.0.0p0")
+        puts "Updating to rubygems #{rubygems_version}. Clearing bundler cache."
+        purge_bundler_cache
+      end
 
-			# recompile nokogiri to use new libyaml
-			if @metadata.exists?(buildpack_version_cache) && (bv = @metadata.read(buildpack_version_cache).sub('v', '').to_i) && bv != 0 && bv <= 99 && bundler.has_gem?("psych")
-				puts "Need to recompile psych for CVE-2013-6393. Clearing bundler cache."
-				puts "See http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=737076."
-				purge_bundler_cache
-			end
+      # fix for https://github.com/sparklemotion/nokogiri/issues/923
+      if @metadata.exists?(buildpack_version_cache) && (bv = @metadata.read(buildpack_version_cache).sub('v', '').to_i) && bv != 0 && bv <= 76
+        puts "Fixing nokogiri install. Clearing bundler cache."
+        puts "See https://github.com/sparklemotion/nokogiri/issues/923."
+        purge_bundler_cache
+      end
 
-			FileUtils.mkdir_p(heroku_metadata)
-			@metadata.write(ruby_version_cache, full_ruby_version, false)
-			@metadata.write(buildpack_version_cache, BUILDPACK_VERSION, false)
-			@metadata.write(bundler_version_cache, BUNDLER_VERSION, false)
-			@metadata.write(rubygems_version_cache, rubygems_version, false)
-			@metadata.save
-		end
-	end
+      # recompile nokogiri to use new libyaml
+      if @metadata.exists?(buildpack_version_cache) && (bv = @metadata.read(buildpack_version_cache).sub('v', '').to_i) && bv != 0 && bv <= 99 && bundler.has_gem?("psych")
+        puts "Need to recompile psych for CVE-2013-6393. Clearing bundler cache."
+        puts "See http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=737076."
+        purge_bundler_cache
+      end
 
-	def purge_bundler_cache
-		instrument "ruby.purge_bundler_cache" do
-			FileUtils.rm_rf(bundler_cache)
-			cache.clear bundler_cache
-			# need to reinstall language pack gems
-			install_bundler_in_app
-		end
-	end
+      FileUtils.mkdir_p(heroku_metadata)
+      @metadata.write(ruby_version_cache, full_ruby_version, false)
+      @metadata.write(buildpack_version_cache, BUILDPACK_VERSION, false)
+      @metadata.write(bundler_version_cache, BUNDLER_VERSION, false)
+      @metadata.write(rubygems_version_cache, rubygems_version, false)
+      @metadata.save
+    end
+  end
+
+  def purge_bundler_cache
+    instrument "ruby.purge_bundler_cache" do
+      FileUtils.rm_rf(bundler_cache)
+      cache.clear bundler_cache
+      # need to reinstall language pack gems
+      install_bundler_in_app
+    end
+  end
 end
