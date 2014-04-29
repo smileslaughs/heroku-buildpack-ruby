@@ -38,8 +38,9 @@ class LanguagePack::Rails4 < LanguagePack::Rails3
 
   def compile
     instrument "rails4.compile" do
+      slug_ignore '.earlyslugignore'
       super
-      late_slug_ignore
+      slug_ignore '.lateslugignore'
     end
   end
 
@@ -114,13 +115,13 @@ WARNING
   #
   # If you have any questions, feel free to hunt me down: pg8p@virginia.edu
   
-  def late_slug_ignore
+  def slug_ignore(filename='.lateslugignore')
     # Meh, I should log something here.
     if File.exist?(".lateslugignore")
-      topic("Beep Bloop. Processing your .lateslugignore file!.")
+      topic("Beep Bloop. Processing your #{filename} file!.")
       ignored_extensions = Array.new
     
-      late_slug_ignore_file = File.new(".lateslugignore", "r")
+      late_slug_ignore_file = File.new("#{filename}", "r")
       late_slug_ignore_file.each do |line|
         unless "#{line.chomp!}".empty?
           ignored_extensions.push line
@@ -131,7 +132,7 @@ WARNING
       matched_files = Array.new
       ignored_extensions.each {|ext| matched_files.push Dir.glob(File.join("**",ext))}
       matched_files.flatten!
-      puts "Deleting #{matched_files.count} files matching .lateslugignore patterns."
+      puts "Deleting #{matched_files.count} files matching #{filename} patterns."
       matched_files.each { |f| File.delete(f) unless File.directory?(f) }
     
       # For what it's worth, I wrote an asset cleaning tool, but it's not generic enough for general use, but I bet
@@ -154,7 +155,7 @@ WARNING
       #FileUtils.rm_rf("vendor/assets")
       #puts "All assets removed from the slug."
     else
-      topic("Beep Bloop. Failed to find your .lateslugignore file!.  Is it in your applications root directory?")
+      topic("Beep Bloop. Failed to find your #{filename} file!.  Is it in your applications root directory?")
     end
   end
 end
