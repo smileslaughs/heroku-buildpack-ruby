@@ -260,226 +260,226 @@ Invalid RUBY_VERSION specified: #{ruby_version.version}
 Valid versions: #{ruby_versions.join(", ")}
 ERROR
 
-			if ruby_version.build?
-				FileUtils.mkdir_p(build_ruby_path)
-				Dir.chdir(build_ruby_path) do
-					ruby_vm = "ruby"
-					instrument "ruby.fetch_build_ruby" do
-						@fetchers[:buildpack].fetch_untar("#{ruby_version.version.sub(ruby_vm, "#{ruby_vm}-build")}.tgz")
-					end
-				end
-				error invalid_ruby_version_message unless $?.success?
-			end
+	    if ruby_version.build?
+        FileUtils.mkdir_p(build_ruby_path)
+        Dir.chdir(build_ruby_path) do
+          ruby_vm = "ruby"
+          instrument "ruby.fetch_build_ruby" do
+            @fetchers[:buildpack].fetch_untar("#{ruby_version.version.sub(ruby_vm, "#{ruby_vm}-build")}.tgz")
+          end
+        end
+        error invalid_ruby_version_message unless $?.success?
+      end
 
-			FileUtils.mkdir_p(slug_vendor_ruby)
-			Dir.chdir(slug_vendor_ruby) do
-				instrument "ruby.fetch_ruby" do
-					if ruby_version.rbx?
-						file		 = "#{ruby_version.version}.tar.bz2"
-						sha_file = "#{file}.sha1"
-						@fetchers[:rbx].fetch(file)
-						@fetchers[:rbx].fetch(sha_file)
+      FileUtils.mkdir_p(slug_vendor_ruby)
+      Dir.chdir(slug_vendor_ruby) do
+        instrument "ruby.fetch_ruby" do
+          if ruby_version.rbx?
+            file     = "#{ruby_version.version}.tar.bz2"
+            sha_file = "#{file}.sha1"
+            @fetchers[:rbx].fetch(file)
+            @fetchers[:rbx].fetch(sha_file)
 
-						expected_checksum = File.read(sha_file).chomp
-						actual_checksum	 = Digest::SHA1.file(file).hexdigest
+            expected_checksum = File.read(sha_file).chomp
+            actual_checksum   = Digest::SHA1.file(file).hexdigest
 
-						error <<-ERROR_MSG unless expected_checksum == actual_checksum
+            error <<-ERROR_MSG unless expected_checksum == actual_checksum
 RBX Checksum for #{file} does not match.
 Expected #{expected_checksum} but got #{actual_checksum}.
 Please try pushing again in a few minutes.
 ERROR_MSG
 
-						run("tar jxf #{file}")
-						FileUtils.mv(Dir.glob("app/#{slug_vendor_ruby}/*"), ".")
-						FileUtils.rm_rf("app")
-						FileUtils.rm(file)
-						FileUtils.rm(sha_file)
-					else
-						@fetchers[:buildpack].fetch_untar("#{ruby_version.version}.tgz")
-					end
-				end
-			end
-			error invalid_ruby_version_message unless $?.success?
+            run("tar jxf #{file}")
+            FileUtils.mv(Dir.glob("app/#{slug_vendor_ruby}/*"), ".")
+            FileUtils.rm_rf("app")
+            FileUtils.rm(file)
+            FileUtils.rm(sha_file)
+          else
+            @fetchers[:buildpack].fetch_untar("#{ruby_version.version}.tgz")
+          end
+        end
+      end
+      error invalid_ruby_version_message unless $?.success?
 
-			app_bin_dir = "bin"
-			FileUtils.mkdir_p app_bin_dir
+      app_bin_dir = "bin"
+      FileUtils.mkdir_p app_bin_dir
 
-			run("ln -s ruby #{slug_vendor_ruby}/bin/ruby.exe")
+      run("ln -s ruby #{slug_vendor_ruby}/bin/ruby.exe")
 
-			Dir["#{slug_vendor_ruby}/bin/*"].each do |vendor_bin|
-				run("ln -s ../#{vendor_bin} #{app_bin_dir}")
-			end
+      Dir["#{slug_vendor_ruby}/bin/*"].each do |vendor_bin|
+        run("ln -s ../#{vendor_bin} #{app_bin_dir}")
+      end
 
-			@metadata.write("buildpack_ruby_version", ruby_version.version)
+      @metadata.write("buildpack_ruby_version", ruby_version.version)
 
-			topic "Using Ruby version: #{ruby_version.version}"
-			if !ruby_version.set
-				warn(<<WARNING)
+      topic "Using Ruby version: #{ruby_version.version}"
+      if !ruby_version.set
+        warn(<<WARNING)
 You have not declared a Ruby version in your Gemfile.
 To set your Ruby version add this line to your Gemfile:
 #{ruby_version.to_gemfile}
 # See https://devcenter.heroku.com/articles/ruby-versions for more information.
 WARNING
-			end
-		end
+      end
+    end
 
-		true
-	end
+    true
+  end
 
-	def new_app?
-		@new_app ||= !File.exist?("vendor/heroku")
-	end
+  def new_app?
+    @new_app ||= !File.exist?("vendor/heroku")
+  end
 
-	# vendors JVM into the slug for JRuby
-	def install_jvm
-		instrument 'ruby.install_jvm' do
-			if ruby_version.jruby?
-				jvm_version =
-					if Gem::Version.new(ruby_version.engine_version) >= Gem::Version.new("1.7.4")
-						LATEST_JVM_VERSION
-					else
-						LEGACY_JVM_VERSION
-					end
+  # vendors JVM into the slug for JRuby
+  def install_jvm
+    instrument 'ruby.install_jvm' do
+      if ruby_version.jruby?
+        jvm_version =
+          if Gem::Version.new(ruby_version.engine_version) >= Gem::Version.new("1.7.4")
+            LATEST_JVM_VERSION
+          else
+            LEGACY_JVM_VERSION
+          end
 
-				topic "Installing JVM: #{jvm_version}"
+        topic "Installing JVM: #{jvm_version}"
 
-				FileUtils.mkdir_p(slug_vendor_jvm)
-				Dir.chdir(slug_vendor_jvm) do
-					@fetchers[:jvm].fetch_untar("#{jvm_version}.tar.gz")
-				end
+        FileUtils.mkdir_p(slug_vendor_jvm)
+        Dir.chdir(slug_vendor_jvm) do
+          @fetchers[:jvm].fetch_untar("#{jvm_version}.tar.gz")
+        end
 
-				bin_dir = "bin"
-				FileUtils.mkdir_p bin_dir
-				Dir["#{slug_vendor_jvm}/bin/*"].each do |bin|
-					run("ln -s ../#{bin} #{bin_dir}")
-				end
-			end
-		end
-	end
+        bin_dir = "bin"
+        FileUtils.mkdir_p bin_dir
+        Dir["#{slug_vendor_jvm}/bin/*"].each do |bin|
+          run("ln -s ../#{bin} #{bin_dir}")
+        end
+      end
+    end
+  end
 
-	# find the ruby install path for its binstubs during build
-	# @return [String] resulting path or empty string if ruby is not vendored
-	def ruby_install_binstub_path
-		@ruby_install_binstub_path ||=
-			if ruby_version.build?
-				"#{build_ruby_path}/bin"
-			elsif ruby_version
-				"#{slug_vendor_ruby}/bin"
-			else
-				""
-			end
-	end
+  # find the ruby install path for its binstubs during build
+  # @return [String] resulting path or empty string if ruby is not vendored
+  def ruby_install_binstub_path
+    @ruby_install_binstub_path ||=
+      if ruby_version.build?
+        "#{build_ruby_path}/bin"
+      elsif ruby_version
+        "#{slug_vendor_ruby}/bin"
+      else
+        ""
+      end
+  end
 
-	# setup the environment so we can use the vendored ruby
-	def setup_ruby_install_env
-		instrument 'ruby.setup_ruby_install_env' do
-			ENV["PATH"] = "#{ruby_install_binstub_path}:#{ENV["PATH"]}"
+  # setup the environment so we can use the vendored ruby
+  def setup_ruby_install_env
+    instrument 'ruby.setup_ruby_install_env' do
+      ENV["PATH"] = "#{ruby_install_binstub_path}:#{ENV["PATH"]}"
 
-			if ruby_version.jruby?
-				ENV['JAVA_OPTS']	= default_java_opts
-			end
-		end
-	end
+      if ruby_version.jruby?
+        ENV['JAVA_OPTS']  = default_java_opts
+      end
+    end
+  end
 
-	# installs vendored gems into the slug
-	def install_bundler_in_app
-		instrument 'ruby.install_language_pack_gems' do
-			FileUtils.mkdir_p(slug_vendor_base)
-			Dir.chdir(slug_vendor_base) do |dir|
-				`cp -R #{bundler.bundler_path}/. .`
-			end
-		end
-	end
+  # installs vendored gems into the slug
+  def install_bundler_in_app
+    instrument 'ruby.install_language_pack_gems' do
+      FileUtils.mkdir_p(slug_vendor_base)
+      Dir.chdir(slug_vendor_base) do |dir|
+        `cp -R #{bundler.bundler_path}/. .`
+      end
+    end
+  end
 
-	# default set of binaries to install
-	# @return [Array] resulting list
-	def binaries
-		add_node_js_binary
-	end
+  # default set of binaries to install
+  # @return [Array] resulting list
+  def binaries
+    add_node_js_binary
+  end
 
-	# vendors binaries into the slug
-	def install_binaries
-		instrument 'ruby.install_binaries' do
-			binaries.each {|binary| install_binary(binary) }
-			Dir["bin/*"].each {|path| run("chmod +x #{path}") }
-		end
-	end
+  # vendors binaries into the slug
+  def install_binaries
+    instrument 'ruby.install_binaries' do
+      binaries.each {|binary| install_binary(binary) }
+      Dir["bin/*"].each {|path| run("chmod +x #{path}") }
+    end
+  end
 
-	# vendors individual binary into the slug
-	# @param [String] name of the binary package from S3.
-	#	 Example: https://s3.amazonaws.com/language-pack-ruby/node-0.4.7.tgz, where name is "node-0.4.7"
-	def install_binary(name)
-		bin_dir = "bin"
-		FileUtils.mkdir_p bin_dir
-		Dir.chdir(bin_dir) do |dir|
-			@fetchers[:buildpack].fetch_untar("#{name}.tgz")
-		end
-	end
+  # vendors individual binary into the slug
+  # @param [String] name of the binary package from S3.
+  #   Example: https://s3.amazonaws.com/language-pack-ruby/node-0.4.7.tgz, where name is "node-0.4.7"
+  def install_binary(name)
+    bin_dir = "bin"
+    FileUtils.mkdir_p bin_dir
+    Dir.chdir(bin_dir) do |dir|
+      @fetchers[:buildpack].fetch_untar("#{name}.tgz")
+    end
+  end
 
-	# removes a binary from the slug
-	# @param [String] relative path of the binary on the slug
-	def uninstall_binary(path)
-		FileUtils.rm File.join('bin', File.basename(path)), :force => true
-	end
+  # removes a binary from the slug
+  # @param [String] relative path of the binary on the slug
+  def uninstall_binary(path)
+    FileUtils.rm File.join('bin', File.basename(path)), :force => true
+  end
 
-	def load_default_cache?
-		new_app? && ruby_version.default?
-	end
+  def load_default_cache?
+    new_app? && ruby_version.default?
+  end
 
-	# loads a default bundler cache for new apps to speed up initial bundle installs
-	def load_default_cache
-		instrument "ruby.load_default_cache" do
-			if load_default_cache?
-				puts "New app detected loading default bundler cache"
-				patchlevel = run("ruby -e 'puts RUBY_PATCHLEVEL'").chomp
-				cache_name	= "#{DEFAULT_RUBY_VERSION}-p#{patchlevel}-default-cache"
-				@fetchers[:buildpack].fetch_untar("#{cache_name}.tgz")
-			end
-		end
-	end
+  # loads a default bundler cache for new apps to speed up initial bundle installs
+  def load_default_cache
+    instrument "ruby.load_default_cache" do
+      if load_default_cache?
+        puts "New app detected loading default bundler cache"
+        patchlevel = run("ruby -e 'puts RUBY_PATCHLEVEL'").chomp
+        cache_name  = "#{DEFAULT_RUBY_VERSION}-p#{patchlevel}-default-cache"
+        @fetchers[:buildpack].fetch_untar("#{cache_name}.tgz")
+      end
+    end
+  end
 
-	# install libyaml into the LP to be referenced for psych compilation
-	# @param [String] tmpdir to store the libyaml files
-	def install_libyaml(dir)
-		instrument 'ruby.install_libyaml' do
-			FileUtils.mkdir_p dir
-			Dir.chdir(dir) do |dir|
-				@fetchers[:buildpack].fetch_untar("#{LIBYAML_PATH}.tgz")
-			end
-		end
-	end
+  # install libyaml into the LP to be referenced for psych compilation
+  # @param [String] tmpdir to store the libyaml files
+  def install_libyaml(dir)
+    instrument 'ruby.install_libyaml' do
+      FileUtils.mkdir_p dir
+      Dir.chdir(dir) do |dir|
+        @fetchers[:buildpack].fetch_untar("#{LIBYAML_PATH}.tgz")
+      end
+    end
+  end
 
-	# remove `vendor/bundle` that comes from the git repo
-	# in case there are native ext.
-	# users should be using `bundle pack` instead.
-	# https://github.com/heroku/heroku-buildpack-ruby/issues/21
-	def remove_vendor_bundle
-		if File.exists?("vendor/bundle")
-			warn(<<WARNING)
+  # remove `vendor/bundle` that comes from the git repo
+  # in case there are native ext.
+  # users should be using `bundle pack` instead.
+  # https://github.com/heroku/heroku-buildpack-ruby/issues/21
+  def remove_vendor_bundle
+    if File.exists?("vendor/bundle")
+      warn(<<WARNING)
 Removing `vendor/bundle`.
 Checking in `vendor/bundle` is not supported. Please remove this directory
 and add it to your .gitignore. To vendor your gems with Bundler, use
 `bundle pack` instead.
 WARNING
-			FileUtils.rm_rf("vendor/bundle")
-		end
-	end
+      FileUtils.rm_rf("vendor/bundle")
+    end
+  end
 
-	def bundler_binstubs_path
-		"vendor/bundle/bin"
-	end
+  def bundler_binstubs_path
+    "vendor/bundle/bin"
+  end
 
-	# runs bundler to install the dependencies
-	def build_bundler
-		instrument 'ruby.build_bundler' do
-			log("bundle") do
-				bundle_without = env("BUNDLE_WITHOUT") || "development:test"
-				bundle_bin		 = "bundle"
-				bundle_command = "#{bundle_bin} install --without #{bundle_without} --path vendor/bundle --binstubs #{bundler_binstubs_path}"
-				bundle_command << " -j4"
+  # runs bundler to install the dependencies
+  def build_bundler
+    instrument 'ruby.build_bundler' do
+      log("bundle") do
+        bundle_without = env("BUNDLE_WITHOUT") || "development:test"
+        bundle_bin     = "bundle"
+        bundle_command = "#{bundle_bin} install --without #{bundle_without} --path vendor/bundle --binstubs #{bundler_binstubs_path}"
+        bundle_command << " -j4"
 
-				if bundler.windows_gemfile_lock?
-					warn(<<WARNING, inline: true)
+        if bundler.windows_gemfile_lock?
+          warn(<<WARNING, inline: true)
 Removing `Gemfile.lock` because it was generated on Windows.
 Bundler will do a full resolve so native gems are handled properly.
 This may result in unexpected gem versions being used in your app.
@@ -487,132 +487,132 @@ In rare occasions Bundler may not be able to resolve your dependencies at all.
 https://devcenter.heroku.com/articles/bundler-windows-gemfile
 WARNING
 
-					log("bundle", "has_windows_gemfile_lock")
-					File.unlink("Gemfile.lock")
-				else
-					# using --deployment is preferred if we can
-					bundle_command += " --deployment"
-					cache.load ".bundle"
-				end
+          log("bundle", "has_windows_gemfile_lock")
+          File.unlink("Gemfile.lock")
+        else
+          # using --deployment is preferred if we can
+          bundle_command += " --deployment"
+          cache.load ".bundle"
+        end
 
-				topic("Installing dependencies using #{bundler.version}")
-				load_bundler_cache
+        topic("Installing dependencies using #{bundler.version}")
+        load_bundler_cache
 
-				bundler_output = ""
-				bundle_time		= nil
-				Dir.mktmpdir("libyaml-") do |tmpdir|
-					libyaml_dir = "#{tmpdir}/#{LIBYAML_PATH}"
-					install_libyaml(libyaml_dir)
+        bundler_output = ""
+        bundle_time    = nil
+        Dir.mktmpdir("libyaml-") do |tmpdir|
+          libyaml_dir = "#{tmpdir}/#{LIBYAML_PATH}"
+          install_libyaml(libyaml_dir)
 
-					# need to setup compile environment for the psych gem
-					yaml_include	 = File.expand_path("#{libyaml_dir}/include").shellescape
-					yaml_lib			 = File.expand_path("#{libyaml_dir}/lib").shellescape
-					pwd						= Dir.pwd
-					bundler_path	 = "#{pwd}/#{slug_vendor_base}/gems/#{BUNDLER_GEM_PATH}/lib"
-					# we need to set BUNDLE_CONFIG and BUNDLE_GEMFILE for
-					# codon since it uses bundler.
-					env_vars			 = {
-						"BUNDLE_GEMFILE"								=> "#{pwd}/Gemfile",
-						"BUNDLE_CONFIG"								 => "#{pwd}/.bundle/config",
-						"CPATH"												 => noshellescape("#{yaml_include}:$CPATH"),
-						"CPPATH"												=> noshellescape("#{yaml_include}:$CPPATH"),
-						"LIBRARY_PATH"									=> noshellescape("#{yaml_lib}:$LIBRARY_PATH"),
-						"RUBYOPT"											 => syck_hack,
-						"NOKOGIRI_USE_SYSTEM_LIBRARIES" => "true"
-					}
-					env_vars["BUNDLER_LIB_PATH"] = "#{bundler_path}" if ruby_version.ruby_version == "1.8.7"
-					puts "Running: #{bundle_command}"
-					instrument "ruby.bundle_install" do
-						bundle_time = Benchmark.realtime do
-							bundler_output << pipe("#{bundle_command} --no-clean", out: "2>&1", env: env_vars, user_env: true)
-						end
-					end
-				end
+          # need to setup compile environment for the psych gem
+          yaml_include   = File.expand_path("#{libyaml_dir}/include").shellescape
+          yaml_lib       = File.expand_path("#{libyaml_dir}/lib").shellescape
+          pwd            = Dir.pwd
+          bundler_path   = "#{pwd}/#{slug_vendor_base}/gems/#{BUNDLER_GEM_PATH}/lib"
+          # we need to set BUNDLE_CONFIG and BUNDLE_GEMFILE for
+          # codon since it uses bundler.
+          env_vars       = {
+            "BUNDLE_GEMFILE"                => "#{pwd}/Gemfile",
+            "BUNDLE_CONFIG"                 => "#{pwd}/.bundle/config",
+            "CPATH"                         => noshellescape("#{yaml_include}:$CPATH"),
+            "CPPATH"                        => noshellescape("#{yaml_include}:$CPPATH"),
+            "LIBRARY_PATH"                  => noshellescape("#{yaml_lib}:$LIBRARY_PATH"),
+            "RUBYOPT"                       => syck_hack,
+            "NOKOGIRI_USE_SYSTEM_LIBRARIES" => "true"
+          }
+          env_vars["BUNDLER_LIB_PATH"] = "#{bundler_path}" if ruby_version.ruby_version == "1.8.7"
+          puts "Running: #{bundle_command}"
+          instrument "ruby.bundle_install" do
+            bundle_time = Benchmark.realtime do
+              bundler_output << pipe("#{bundle_command} --no-clean", out: "2>&1", env: env_vars, user_env: true)
+            end
+          end
+        end
 
-				if $?.success?
-					puts "Bundle completed (#{"%.2f" % bundle_time}s)"
-					log "bundle", :status => "success"
-					puts "Cleaning up the bundler cache."
-					instrument "ruby.bundle_clean" do
-						# Only show bundle clean output when not using default cache
-						if load_default_cache?
-							run "bundle clean > /dev/null"
-						else
-							pipe("#{bundle_bin} clean", out: "2> /dev/null")
-						end
-					end
-					cache.store ".bundle"
-					cache.store "vendor/bundle"
+        if $?.success?
+          puts "Bundle completed (#{"%.2f" % bundle_time}s)"
+          log "bundle", :status => "success"
+          puts "Cleaning up the bundler cache."
+          instrument "ruby.bundle_clean" do
+            # Only show bundle clean output when not using default cache
+            if load_default_cache?
+              run "bundle clean > /dev/null"
+            else
+              pipe("#{bundle_bin} clean", out: "2> /dev/null")
+            end
+          end
+          cache.store ".bundle"
+          cache.store "vendor/bundle"
 
-					# Keep gem cache out of the slug
-					FileUtils.rm_rf("#{slug_vendor_base}/cache")
-				else
-					log "bundle", :status => "failure"
-					error_message = "Failed to install gems via Bundler."
-					puts "Bundler Output: #{bundler_output}"
-					if bundler_output.match(/An error occurred while installing sqlite3/)
-						error_message += <<ERROR
+          # Keep gem cache out of the slug
+          FileUtils.rm_rf("#{slug_vendor_base}/cache")
+        else
+          log "bundle", :status => "failure"
+          error_message = "Failed to install gems via Bundler."
+          puts "Bundler Output: #{bundler_output}"
+          if bundler_output.match(/An error occurred while installing sqlite3/)
+            error_message += <<ERROR
 
 
 Detected sqlite3 gem which is not supported on Heroku.
 https://devcenter.heroku.com/articles/sqlite3
 ERROR
-					end
+          end
 
-					error error_message
-				end
-			end
-		end
-	end
+          error error_message
+        end
+      end
+    end
+  end
 
-	# RUBYOPT line that requires syck_hack file
-	# @return [String] require string if needed or else an empty string
-	def syck_hack
-		instrument "ruby.syck_hack" do
-			syck_hack_file = File.expand_path(File.join(File.dirname(__FILE__), "../../vendor/syck_hack"))
-			rv						 = run_stdout('ruby -e "puts RUBY_VERSION"').chomp
-			# < 1.9.3 includes syck, so we need to use the syck hack
-			if Gem::Version.new(rv) < Gem::Version.new("1.9.3")
-				"-r#{syck_hack_file}"
-			else
-				""
-			end
-		end
-	end
+  # RUBYOPT line that requires syck_hack file
+  # @return [String] require string if needed or else an empty string
+  def syck_hack
+    instrument "ruby.syck_hack" do
+      syck_hack_file = File.expand_path(File.join(File.dirname(__FILE__), "../../vendor/syck_hack"))
+      rv             = run_stdout('ruby -e "puts RUBY_VERSION"').chomp
+      # < 1.9.3 includes syck, so we need to use the syck hack
+      if Gem::Version.new(rv) < Gem::Version.new("1.9.3")
+        "-r#{syck_hack_file}"
+      else
+        ""
+      end
+    end
+  end
 
-	# writes ERB based database.yml for Rails. The database.yml uses the DATABASE_URL from the environment during runtime.
-	def create_database_yml
-		instrument 'ruby.create_database_yml' do
-			log("create_database_yml") do
-				return unless File.directory?("config")
-				topic("Writing config/database.yml to read from DATABASE_URL")
-				File.open("config/database.yml", "w") do |file|
-					file.puts <<-DATABASE_YML
+  # writes ERB based database.yml for Rails. The database.yml uses the DATABASE_URL from the environment during runtime.
+  def create_database_yml
+    instrument 'ruby.create_database_yml' do
+      log("create_database_yml") do
+        return unless File.directory?("config")
+        topic("Writing config/database.yml to read from DATABASE_URL")
+        File.open("config/database.yml", "w") do |file|
+          file.puts <<-DATABASE_YML
 <%
 
 require 'cgi'
 require 'uri'
 
 begin
-	uri = URI.parse(ENV["DATABASE_URL"])
+  uri = URI.parse(ENV["DATABASE_URL"])
 rescue URI::InvalidURIError
-	raise "Invalid DATABASE_URL"
+  raise "Invalid DATABASE_URL"
 end
 
 raise "No RACK_ENV or RAILS_ENV found" unless ENV["RAILS_ENV"] || ENV["RACK_ENV"]
 
 def attribute(name, value, force_string = false)
-	if value
-		value_string =
-			if force_string
-				'"' + value + '"'
-			else
-				value
-			end
-		"\#{name}: \#{value_string}"
-	else
-		""
-	end
+  if value
+    value_string =
+      if force_string
+        '"' + value + '"'
+      else
+        value
+      end
+    "\#{name}: \#{value_string}"
+  else
+    ""
+  end
 end
 
 adapter = uri.scheme
@@ -631,15 +631,15 @@ params = CGI.parse(uri.query || "")
 %>
 
 <%= ENV["RAILS_ENV"] || ENV["RACK_ENV"] %>:
-	<%= attribute "adapter",	adapter %>
-	<%= attribute "database", database %>
-	<%= attribute "username", username %>
-	<%= attribute "password", password, true %>
-	<%= attribute "host",		 host %>
-	<%= attribute "port",		 port %>
+  <%= attribute "adapter",  adapter %>
+  <%= attribute "database", database %>
+  <%= attribute "username", username %>
+  <%= attribute "password", password, true %>
+  <%= attribute "host",     host %>
+  <%= attribute "port",     port %>
 
 <% params.each do |key, value| %>
-	<%= key %>: <%= value.first %>
+  <%= key %>: <%= value.first %>
 <% end %>
         DATABASE_YML
         end
