@@ -135,7 +135,13 @@ WARNING
       ignored_extensions.each {|ext| matched_files.push Dir.glob(File.join("**",ext))}
       matched_files.flatten!
       puts "Deleting #{matched_files.count} files matching #{filename} patterns."
-      matched_files.each { |f| File.delete(f) unless File.directory?(f) }
+      matched_files.each do |f|
+      	if File.directory?(f)
+      	  FileUtils.rm_rf(f)
+      	else
+	      File.delete(f) 
+	    end
+      end
     
       # For what it's worth, I wrote an asset cleaning tool, but it's not generic enough for general use, but I bet
       # it probably does a better job achieving a completely clean asset configuration when used in tandem with
