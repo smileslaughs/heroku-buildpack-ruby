@@ -139,7 +139,7 @@ WARNING
       	if File.directory?(f)
       	  FileUtils.rm_rf(f)
       	else
-	      File.delete(f) 
+	      File.delete(f) if File.exist?(f)
 	    end
       end
     
