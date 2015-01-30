@@ -306,7 +306,6 @@ SHELL
 
       invalid_ruby_version_message = <<ERROR
 Invalid RUBY_VERSION specified: #{ruby_version.version}
-Valid versions: #{ruby_versions.join(", ")}
 ERROR
 
 	    if ruby_version.build?
