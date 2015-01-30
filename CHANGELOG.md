@@ -1,5 +1,82 @@
 ## Master
 
+* JVM is now available on cedar-14, do not vendor in JVM based on individual gems. If customer needs a specific version they should use multibuildpack with java and ruby buildpacks.
+
+## v133 (1/22/2015)
+
+* Bump bundler to 1.7.12 which includes multiple fixes and support for block source declaration (https://github.com/bundler/bundler/blob/1-7-stable/CHANGELOG.md).
+
+## v132 (1/21/2015)
+
+* Support multibuildpack export file (#319)
+* Auto set the JVM MAX HEAP based on dyno size for JRuby (#323)
+* Use s3 based npmjs servers for node (#336)
+* Support system.properties file for specifying JDK in JRuby (#305)
+* Fix ruby version parsing to support JRuby 9.0.0.0.pre1 (#339)
+
+## v131 (1/15/2015)
+
+* Revert v130 due to lack of propper messaging around WEB_CONCURRENCY settings.
+
+## v130 (1/15/2015)
+
+* Auto set WEB_CONCURRENCY based on dyno size if not already set.
+* Support multibuildpack export file (#319)
+* Auto set the JVM MAX HEAP based on dyno size for JRuby (#323)
+* Use s3 based npmjs servers for node (#336)
+* Support system.properties file for specifying JDK in JRuby (#305)
+
+## v129 (11/6/2014)
+
+* Fix asset caching bug (#300)
+
+## v128 (11/4/2014)
+
+* Better cedar14 Ruby install error message
+
+## v127 (9/18/2014)
+
+* rbx is now stack aware
+
+## v126 (8/4/2014)
+
+* fix bundler cache clearing on ruby version change
+* vendor the jvm when yui-compressor is detected
+
+## v125 (8/1/2014)
+
+* bump to node 0.10.30 on cedar-14
+
+## v124 (8/1/2014)
+
+* use node 0.10.29 on cedar-14
+* properly use vendored jvm, so not to be dependent on java on the stack image
+
+## v123 (7/25/2014)
+
+* fix permission denied edge cases when copying the bundler cache with minitest
+
+## v122 (7/25/2014)
+
+* handle bundler cache for stack changes on existing apps
+
+## v121 (6/30/2014)
+
+* on new apps, source default envs instead of replacing them
+* support different stacks for new apps
+
+## v120 (6/16/2014)
+
+* Bump bundler to 1.6.3 which includes improved dependency resolver
+
+## v119 (5/9/2014)
+
+* Temporarily disable default ruby cache
+
+## v118 (5/6/2014)
+
+* Ruby version detection now loads user environment variables
+
 ## v117 (4/14/2014)
 
 Features:
